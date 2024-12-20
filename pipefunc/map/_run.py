@@ -60,6 +60,7 @@ def run_map(
     output_names: set[OUTPUT_TYPE] | None = None,
     parallel: bool = True,
     executor: Executor | dict[OUTPUT_TYPE, Executor] | None = None,
+    chunksizes: dict[OUTPUT_TYPE, int] | None = None,
     storage: str | dict[OUTPUT_TYPE, str] = "file_array",
     persist_memory: bool = True,
     cleanup: bool = True,
@@ -156,6 +157,7 @@ def run_map(
                 outputs=outputs,
                 fixed_indices=fixed_indices,
                 executor=ex,
+                chunksizes=chunksizes,
                 progress=progress,
                 cache=pipeline.cache,
             )
@@ -345,7 +347,9 @@ def _dump_single_output(
     return (output,)
 
 
-def _single_dump_single_output(output: Any, output_name: str, store: dict[str, StoreType]) -> None:
+def _single_dump_single_output(
+    output: Any, output_name: str, store: dict[str, StoreType]
+) -> None:
     storage = store[output_name]
     assert not isinstance(storage, StorageBase)
     if isinstance(storage, Path):
@@ -355,7 +359,9 @@ def _single_dump_single_output(output: Any, output_name: str, store: dict[str, S
         storage.value = output
 
 
-def _func_kwargs(func: PipeFunc, run_info: RunInfo, store: dict[str, StoreType]) -> dict[str, Any]:
+def _func_kwargs(
+    func: PipeFunc, run_info: RunInfo, store: dict[str, StoreType]
+) -> dict[str, Any]:
     kwargs = {}
     for p in func.parameters:
         if p in func._bound:
@@ -385,7 +391,10 @@ def _select_kwargs(
     external_shape = external_shape_from_mask(shape, shape_mask)
     input_keys = func.mapspec.input_keys(external_shape, index)
     normalized_keys = {k: v[0] if len(v) == 1 else v for k, v in input_keys.items()}
-    selected = {k: v[normalized_keys[k]] if k in normalized_keys else v for k, v in kwargs.items()}
+    selected = {
+        k: v[normalized_keys[k]] if k in normalized_keys else v
+        for k, v in kwargs.items()
+    }
     _load_arrays(selected)
     return selected
 
@@ -412,13 +421,19 @@ def _select_kwargs_and_eval_resources(
     return selected
 
 
-def _init_result_arrays(output_name: OUTPUT_TYPE, shape: tuple[int, ...]) -> list[np.ndarray]:
+def _init_result_arrays(
+    output_name: OUTPUT_TYPE, shape: tuple[int, ...]
+) -> list[np.ndarray]:
     return [np.empty(prod(shape), dtype=object) for _ in at_least_tuple(output_name)]
 
 
 def _pick_output(func: PipeFunc, output: Any) -> tuple[Any, ...]:
     return tuple(
-        (func.output_picker(output, output_name) if func.output_picker is not None else output)
+        (
+            func.output_picker(output, output_name)
+            if func.output_picker is not None
+            else output
+        )
         for output_name in at_least_tuple(func.output_name)
     )
 
@@ -448,7 +463,9 @@ def _get_or_set_cache(
 _EVALUATED_RESOURCES = "__pipefunc_internal_evaluated_resources__"
 
 
-def _run_iteration(func: PipeFunc, selected: dict[str, Any], cache: _CacheBase | None) -> Any:
+def _run_iteration(
+    func: PipeFunc, selected: dict[str, Any], cache: _CacheBase | None
+) -> Any:
     def compute_fn() -> Any:
         try:
             return func(**selected)
@@ -460,8 +477,16 @@ def _run_iteration(func: PipeFunc, selected: dict[str, Any], cache: _CacheBase |
     return _get_or_set_cache(func, selected, cache, compute_fn)
 
 
+def chunk_indizes(indices: list[int], chunksize: int = 1) -> Iterable[list[int]]:
+    assert chunksize >= 1
+
+    iterator = iter(indices)
+    while batch := tuple(itertools.islice(iterator, chunksize)):
+        yield batch
+
+
 def _run_iteration_and_process(
-    index: int,
+    index_chunk: list[int],
     func: PipeFunc,
     kwargs: dict[str, Any],
     shape: tuple[int, ...],
@@ -470,21 +495,28 @@ def _run_iteration_and_process(
     cache: _CacheBase | None = None,
     *,
     force_dump: bool = False,
-) -> tuple[Any, ...]:
-    selected = _select_kwargs_and_eval_resources(func, kwargs, shape, shape_mask, index)
-    output = _run_iteration(func, selected, cache)
-    outputs = _pick_output(func, output)
-    _update_array(
-        func,
-        arrays,
-        shape,
-        shape_mask,
-        index,
-        outputs,
-        in_post_process=False,
-        force_dump=force_dump,
-    )
-    return outputs
+) -> list[tuple[Any, ...]]:
+
+    chunk_outputs = []
+
+    for index in index_chunk:
+        selected = _select_kwargs_and_eval_resources(
+            func, kwargs, shape, shape_mask, index
+        )
+        output = _run_iteration(func, selected, cache)
+        outputs = _pick_output(func, output)
+        _update_array(
+            func,
+            arrays,
+            shape,
+            shape_mask,
+            index,
+            outputs,
+            in_post_process=False,
+            force_dump=force_dump,
+        )
+        chunk_outputs.append(outputs)
+    return chunk_outputs
 
 
 def _update_array(
@@ -630,7 +662,9 @@ def _prepare_submit_map_spec(
     )
     fixed_mask = _mask_fixed_axes(fixed_indices, func.mapspec, shape, mask)
     existing, missing = _existing_and_missing_indices(arrays, fixed_mask)  # type: ignore[arg-type]
-    return _MapSpecArgs(process_index, existing, missing, result_arrays, shape, mask, arrays)
+    return _MapSpecArgs(
+        process_index, existing, missing, result_arrays, shape, mask, arrays
+    )
 
 
 def _mask_fixed_axes(
@@ -669,20 +703,23 @@ def _submit(
 
 def _maybe_parallel_map(
     func: PipeFunc,
-    process_index: functools.partial[tuple[Any, ...]],
+    process_chunk: functools.partial[list[tuple[Any, ...]]],
     indices: list[int],
     executor: dict[OUTPUT_TYPE, Executor] | None,
+    chunksizes: dict[OUTPUT_TYPE, int] | None,
     status: Status | None,
     progress: ProgressTracker | None,
 ) -> list[Any]:
     ex = _executor_for_func(func, executor)
     if ex is not None:
         assert executor is not None
-        ex = maybe_update_slurm_executor_map(func, ex, executor, process_index, indices)
-        return [_submit(process_index, ex, status, progress, i) for i in indices]
+        ex = maybe_update_slurm_executor_map(func, ex, executor, process_chunk, indices)
+        chunksize = _chunksize_for_func(func, chunksizes)
+        chunks = list(chunk_indizes(indices, chunksize))
+        return [_submit(process_chunk, ex, status, progress, chunk) for chunk in chunks]
     if status is not None:
         assert progress is not None
-        process_index = _wrap_with_status_update(process_index, status, progress)  # type: ignore[assignment]
+        process_index = _wrap_with_status_update(process_chunk, status, progress)  # type: ignore[assignment]
     return [process_index(i) for i in indices]
 
 
@@ -811,6 +848,7 @@ def _run_and_process_generation(
     outputs: dict[str, Result],
     fixed_indices: dict[str, int | slice] | None,
     executor: dict[OUTPUT_TYPE, Executor] | None,
+    chunksizes: dict[OUTPUT_TYPE, Executor] | None,
     progress: ProgressTracker | None,
     cache: _CacheBase | None = None,
 ) -> None:
@@ -820,6 +858,7 @@ def _run_and_process_generation(
         store,
         fixed_indices,
         executor,
+        chunksizes,
         progress,
         cache,
     )
@@ -879,6 +918,7 @@ def _submit_func(
     store: dict[str, StoreType],
     fixed_indices: dict[str, int | slice] | None,
     executor: dict[OUTPUT_TYPE, Executor] | None,
+    chunksizes: dict[OUTPUT_TYPE, int] | None,
     progress: ProgressTracker | None = None,
     cache: _CacheBase | None = None,
 ) -> _KwargsTask:
@@ -886,12 +926,31 @@ def _submit_func(
     status = progress.progress_dict[func.output_name] if progress is not None else None
     cache = cache if func.cache else None
     if func.mapspec and func.mapspec.inputs:
-        args = _prepare_submit_map_spec(func, kwargs, run_info, store, fixed_indices, cache)
-        r = _maybe_parallel_map(func, args.process_index, args.missing, executor, status, progress)
+        args = _prepare_submit_map_spec(
+            func, kwargs, run_info, store, fixed_indices, cache
+        )
+        r = _maybe_parallel_map(
+            func,
+            args.process_index,
+            args.missing,
+            executor,
+            chunksizes,
+            status,
+            progress,
+        )
         task = r, args
     else:
-        task = _maybe_execute_single(executor, status, progress, func, kwargs, store, cache)
+        task = _maybe_execute_single(
+            executor, status, progress, func, kwargs, store, cache
+        )
     return _KwargsTask(kwargs, task)
+
+
+def _chunksize_for_func(
+    func: PipeFunc,
+    chunksizes: dict[OUTPUT_TYPE, Executor] | None,
+) -> int:
+    return chunksizes.get(func.output_name, 1)
 
 
 def _executor_for_func(
@@ -919,11 +978,14 @@ def _submit_generation(
     store: dict[str, StoreType],
     fixed_indices: dict[str, int | slice] | None,
     executor: dict[OUTPUT_TYPE, Executor] | None,
+    chunksizes: dict[OUTPUT_TYPE, Executor] | None,
     progress: ProgressTracker | None,
     cache: _CacheBase | None = None,
 ) -> dict[PipeFunc, _KwargsTask]:
     return {
-        func: _submit_func(func, run_info, store, fixed_indices, executor, progress, cache)
+        func: _submit_func(
+            func, run_info, store, fixed_indices, executor, chunksizes, progress, cache
+        )
         for func in generation
     }
 
@@ -937,7 +999,9 @@ def _output_from_mapspec_task(
     arrays: list[StorageBase] = [store[name] for name in at_least_tuple(func.output_name)]  # type: ignore[misc]
     for index, outputs in zip(args.missing, outputs_list):
         _update_result_array(args.result_arrays, index, outputs, args.shape, args.mask)
-        _update_array(func, arrays, args.shape, args.mask, index, outputs, in_post_process=True)
+        _update_array(
+            func, arrays, args.shape, args.mask, index, outputs, in_post_process=True
+        )
 
     for index in args.existing:
         outputs = [array.get_from_index(index) for array in args.arrays]
@@ -982,7 +1046,8 @@ def _process_task(
     kwargs, task = kwargs_task
     if func.mapspec and func.mapspec.inputs:
         r, args = task
-        outputs_list = [_result(x) for x in r]
+        # Unpack the chunked results list
+        outputs_list = [itertools.accumulate(_result(x)) for x in r]
         output = _output_from_mapspec_task(func, store, args, outputs_list)
     else:
         r = _result(task)

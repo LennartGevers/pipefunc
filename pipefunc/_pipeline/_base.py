@@ -50,7 +50,11 @@ from ._mapspec import (
     find_non_root_axes,
     replace_none_in_axes,
 )
-from ._simplify import _func_node_colors, _identify_combinable_nodes, simplified_pipeline
+from ._simplify import (
+    _func_node_colors,
+    _identify_combinable_nodes,
+    simplified_pipeline,
+)
 from ._validation import (
     validate_consistent_defaults,
     validate_consistent_type_annotations,
@@ -215,9 +219,13 @@ class Pipeline:
 
         """
         inputs = self.root_args()
-        outputs = tuple(sorted(n for f in self.leaf_nodes for n in at_least_tuple(f.output_name)))
+        outputs = tuple(
+            sorted(n for f in self.leaf_nodes for n in at_least_tuple(f.output_name))
+        )
         intermediate_outputs = tuple(sorted(self.all_output_names - set(outputs)))
-        required_inputs = tuple(sorted(arg for arg in inputs if arg not in self.defaults))
+        required_inputs = tuple(
+            sorted(arg for arg in inputs if arg not in self.defaults)
+        )
         optional_inputs = tuple(sorted(arg for arg in inputs if arg in self.defaults))
         return {
             "inputs": inputs,
@@ -253,7 +261,9 @@ class Pipeline:
             for f in self.functions:
                 f.debug = value
 
-    def add(self, f: PipeFunc | Callable, mapspec: str | MapSpec | None = None) -> PipeFunc:
+    def add(
+        self, f: PipeFunc | Callable, mapspec: str | MapSpec | None = None
+    ) -> PipeFunc:
         """Add a function to the pipeline.
 
         Always creates a copy of the `PipeFunc` instance to avoid side effects.
@@ -271,7 +281,9 @@ class Pipeline:
 
         """
         if isinstance(f, PipeFunc):
-            resources = Resources.maybe_with_defaults(f.resources, self._default_resources)
+            resources = Resources.maybe_with_defaults(
+                f.resources, self._default_resources
+            )
             f: PipeFunc = f.copy(  # type: ignore[no-redef]
                 resources=resources,
                 mapspec=f.mapspec if mapspec is None else _maybe_mapspec(mapspec),
@@ -301,7 +313,9 @@ class Pipeline:
         self._validate()
         return f
 
-    def drop(self, *, f: PipeFunc | None = None, output_name: OUTPUT_TYPE | None = None) -> None:
+    def drop(
+        self, *, f: PipeFunc | None = None, output_name: OUTPUT_TYPE | None = None
+    ) -> None:
         """Drop a function from the pipeline.
 
         Parameters
@@ -312,7 +326,9 @@ class Pipeline:
             The name of the output to drop from the pipeline.
 
         """
-        if (f is not None and output_name is not None) or (f is None and output_name is None):
+        if (f is not None and output_name is not None) or (
+            f is None and output_name is None
+        ):
             msg = "Either `f` or `output_name` should be provided."
             raise ValueError(msg)
         if f is not None:
@@ -488,7 +504,9 @@ class Pipeline:
     def _clear_internal_cache(self) -> None:
         clear_cached_properties(self)
 
-    def __call__(self, __output_name__: OUTPUT_TYPE | None = None, /, **kwargs: Any) -> Any:
+    def __call__(
+        self, __output_name__: OUTPUT_TYPE | None = None, /, **kwargs: Any
+    ) -> Any:
         """Call the pipeline for a specific return value.
 
         Parameters
@@ -676,6 +694,7 @@ class Pipeline:
         output_names: set[OUTPUT_TYPE] | None = None,
         parallel: bool = True,
         executor: Executor | dict[OUTPUT_TYPE, Executor] | None = None,
+        chunksizes: dict[OUTPUT_TYPE, int] | None = None,
         storage: str | dict[OUTPUT_TYPE, str] = "file_array",
         persist_memory: bool = True,
         cleanup: bool = True,
@@ -762,6 +781,7 @@ class Pipeline:
             output_names=output_names,
             parallel=parallel,
             executor=executor,
+            chunksizes=chunksizes,
             storage=storage,
             persist_memory=persist_memory,
             cleanup=cleanup,
@@ -915,12 +935,16 @@ class Pipeline:
             return sorted_outputs
         arg_combos = self.arg_combinations(output_name)
         root_args = next(
-            args for args in arg_combos if all(isinstance(self.node_mapping[n], str) for n in args)
+            args
+            for args in arg_combos
+            if all(isinstance(self.node_mapping[n], str) for n in args)
         )
         self._internal_cache.root_args[output_name] = root_args
         return root_args
 
-    def func_dependencies(self, output_name: OUTPUT_TYPE | PipeFunc) -> list[OUTPUT_TYPE]:
+    def func_dependencies(
+        self, output_name: OUTPUT_TYPE | PipeFunc
+    ) -> list[OUTPUT_TYPE]:
         """Return the functions required to compute a specific output.
 
         See Also
@@ -928,7 +952,9 @@ class Pipeline:
         func_dependents
 
         """
-        return _traverse_graph(output_name, "predecessors", self.graph, self.node_mapping)
+        return _traverse_graph(
+            output_name, "predecessors", self.graph, self.node_mapping
+        )
 
     def func_dependents(self, name: OUTPUT_TYPE | PipeFunc) -> list[OUTPUT_TYPE]:
         """Return the functions that depend on a specific input/output.
@@ -964,7 +990,9 @@ class Pipeline:
         self._internal_cache.func_defaults[func.output_name] = defaults
         return defaults
 
-    def update_defaults(self, defaults: dict[str, Any], *, overwrite: bool = False) -> None:
+    def update_defaults(
+        self, defaults: dict[str, Any], *, overwrite: bool = False
+    ) -> None:
         """Update defaults to the provided keyword arguments.
 
         Automatically traverses the pipeline graph to find all functions that
@@ -985,7 +1013,12 @@ class Pipeline:
         """
         unused = set(defaults.keys())
         for f in self.functions:
-            update = {k: v for k, v in defaults.items() if k in f.parameters if k not in f.bound}
+            update = {
+                k: v
+                for k, v in defaults.items()
+                if k in f.parameters
+                if k not in f.bound
+            }
             unused -= set(update.keys())
             if overwrite or update:
                 f.update_defaults(update, overwrite=overwrite)
@@ -1023,9 +1056,11 @@ class Pipeline:
         unused = set(renames.keys())
         for f in self.functions:
             parameters = tuple(
-                f.parameters + at_least_tuple(f.output_name)
-                if update_from == "current"
-                else tuple(f.original_parameters) + at_least_tuple(f._output_name),
+                (
+                    f.parameters + at_least_tuple(f.output_name)
+                    if update_from == "current"
+                    else tuple(f.original_parameters) + at_least_tuple(f._output_name)
+                ),
             )
             update = {k: v for k, v in renames.items() if k in parameters}
             unused -= set(update.keys())
@@ -1111,7 +1146,9 @@ class Pipeline:
                 else outputs
             )
             if f_inputs or f_outputs:
-                f.update_scope(scope, inputs=f_inputs, outputs=f_outputs, exclude=exclude)
+                f.update_scope(
+                    scope, inputs=f_inputs, outputs=f_outputs, exclude=exclude
+                )
         self._clear_internal_cache()
         self._validate()
 
@@ -1266,7 +1303,9 @@ class Pipeline:
         mapspecs = self.mapspecs(ordered=False)
         non_root_inputs = find_non_root_axes(mapspecs, root_args)
         output_names = {at_least_tuple(f.output_name) for f in self.functions}
-        multi_output_mapping = {n: names for names in output_names for n in names if len(names) > 1}
+        multi_output_mapping = {
+            n: names for names in output_names for n in names if len(names) > 1
+        }
         replace_none_in_axes(mapspecs, non_root_inputs, multi_output_mapping)  # type: ignore[arg-type]
         return create_missing_mapspecs(self.functions, non_root_inputs)  # type: ignore[arg-type]
 
@@ -1308,7 +1347,9 @@ class Pipeline:
     def visualize(
         self,
         *,
-        backend: Literal["matplotlib", "graphviz", "graphviz_widget", "holoviews"] | None = None,
+        backend: (
+            Literal["matplotlib", "graphviz", "graphviz_widget", "holoviews"] | None
+        ) = None,
         **kwargs: Any,
     ) -> Any:
         """Visualize the pipeline as a directed graph.
@@ -1622,7 +1663,9 @@ class Pipeline:
     @property
     def profiling_stats(self) -> dict[str, ProfilingStats]:
         """Return the profiling data for each function in the pipeline."""
-        return {f.__name__: f.profiling_stats for f in self.functions if f.profiling_stats}
+        return {
+            f.__name__: f.profiling_stats for f in self.functions if f.profiling_stats
+        }
 
     def __str__(self) -> str:
         """Return a string representation of the pipeline."""
@@ -1631,7 +1674,9 @@ class Pipeline:
             if isinstance(node, PipeFunc):
                 fn = node
                 input_args = self.all_arg_combinations[fn.output_name]
-                pipeline_str += f"  {fn.output_name} = {fn.__name__}({', '.join(fn.parameters)})\n"
+                pipeline_str += (
+                    f"  {fn.output_name} = {fn.__name__}({', '.join(fn.parameters)})\n"
+                )
                 pipeline_str += f"    Possible input arguments: {input_args}\n"
         return pipeline_str
 
@@ -1755,7 +1800,9 @@ class Pipeline:
         """Return the connected components of the pipeline graph."""
         return list(nx.connected_components(self.graph.to_undirected()))
 
-    def split_disconnected(self: Pipeline, **pipeline_kwargs: Any) -> tuple[Pipeline, ...]:
+    def split_disconnected(
+        self: Pipeline, **pipeline_kwargs: Any
+    ) -> tuple[Pipeline, ...]:
         """Split disconnected components of the pipeline into separate pipelines.
 
         Parameters
@@ -1770,7 +1817,8 @@ class Pipeline:
         """
         connected_components = self._connected_components()
         pipefunc_lists = [
-            [x.copy() for x in xs if isinstance(x, PipeFunc)] for xs in connected_components
+            [x.copy() for x in xs if isinstance(x, PipeFunc)]
+            for xs in connected_components
         ]
         if len(pipefunc_lists) == 1:
             msg = "Pipeline is fully connected, no need to split."
@@ -2032,7 +2080,8 @@ class _PipelineAsFunc:
     ) -> Callable[..., Any]:
         sig = inspect.signature(self.__call__)
         new_params = [
-            inspect.Parameter(name, inspect.Parameter.POSITIONAL_OR_KEYWORD) for name in parameters
+            inspect.Parameter(name, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            for name in parameters
         ]
         new_sig = sig.replace(parameters=new_params)
 
@@ -2069,7 +2118,9 @@ def _update_all_results(
         all_results[func.output_name] = r
 
 
-def _execute_func(func: PipeFunc, func_args: dict[str, Any], lazy: bool) -> Any:  # noqa: FBT001
+def _execute_func(
+    func: PipeFunc, func_args: dict[str, Any], lazy: bool
+) -> Any:  # noqa: FBT001
     if lazy:
         return _LazyFunction(func, kwargs=func_args)
     try:
@@ -2172,7 +2223,9 @@ def _find_nodes_between(
 
 @dataclass(frozen=True, slots=True)
 class _PipelineInternalCache:
-    arg_combinations: dict[OUTPUT_TYPE, set[tuple[str, ...]]] = field(default_factory=dict)
+    arg_combinations: dict[OUTPUT_TYPE, set[tuple[str, ...]]] = field(
+        default_factory=dict
+    )
     root_args: dict[OUTPUT_TYPE | None, tuple[str, ...]] = field(default_factory=dict)
     func: dict[OUTPUT_TYPE, _PipelineAsFunc] = field(default_factory=dict)
     func_defaults: dict[OUTPUT_TYPE, dict[str, Any]] = field(default_factory=dict)
