@@ -1,0 +1,115 @@
+{
+    "all_output_names": [
+        "anomaly_times",
+        "anomaly_values",
+        "filtered_data",
+        "num_anomalies",
+        "peak_times",
+        "peak_values",
+        "raw_data"
+    ],
+    "shapes": {
+        "noise_level": [
+            3
+        ],
+        "num_samples": [
+            3
+        ],
+        "raw_data": [
+            3,
+            3
+        ],
+        "filtered_data": [
+            3,
+            3
+        ],
+        "peak_times,peak_values": [
+            3,
+            3
+        ],
+        "peak_times": [
+            3,
+            3
+        ],
+        "peak_values": [
+            3,
+            3
+        ],
+        "anomaly_times,anomaly_values": [
+            3,
+            3
+        ],
+        "anomaly_times": [
+            3,
+            3
+        ],
+        "anomaly_values": [
+            3,
+            3
+        ],
+        "num_anomalies": [
+            3,
+            3
+        ]
+    },
+    "internal_shapes": null,
+    "shape_masks": {
+        "noise_level": [
+            true
+        ],
+        "num_samples": [
+            true
+        ],
+        "raw_data": [
+            true,
+            true
+        ],
+        "filtered_data": [
+            true,
+            true
+        ],
+        "peak_times,peak_values": [
+            true,
+            true
+        ],
+        "peak_times": [
+            true,
+            true
+        ],
+        "peak_values": [
+            true,
+            true
+        ],
+        "anomaly_times,anomaly_values": [
+            true,
+            true
+        ],
+        "anomaly_times": [
+            true,
+            true
+        ],
+        "anomaly_values": [
+            true,
+            true
+        ],
+        "num_anomalies": [
+            true,
+            true
+        ]
+    },
+    "run_folder": "sensor_map_results",
+    "mapspecs_as_strings": [
+        "num_samples[i], noise_level[j] -> raw_data[i, j]",
+        "raw_data[i, j] -> filtered_data[i, j]",
+        "filtered_data[i, j] -> peak_times[i, j], peak_values[i, j]",
+        "peak_times[i, j], peak_values[i, j] -> anomaly_times[i, j], anomaly_values[i, j]",
+        "anomaly_times[i, j] -> num_anomalies[i, j]"
+    ],
+    "storage": "file_array",
+    "pipefunc_version": "0.0.0.dev585+NestedPipeFunc.Output.Type.Bug.gb74c1a3.dirty",
+    "input_paths": {
+        "num_samples": "sensor_map_results/inputs/num_samples.cloudpickle",
+        "noise_level": "sensor_map_results/inputs/noise_level.cloudpickle"
+    },
+    "defaults_path": "sensor_map_results/defaults/defaults.cloudpickle"
+}
