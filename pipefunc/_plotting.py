@@ -91,6 +91,7 @@ def _all_type_annotations(graph: nx.DiGraph) -> dict[str, type]:
     for node in graph.nodes:
         if isinstance(node, PipeFunc):
             outputs = {k: v for k, v in node.output_annotation.items() if v is not NoAnnotation}
+            print(outputs, node.output_name)
             hints |= outputs | node.parameter_annotations
     return hints
 
@@ -292,6 +293,7 @@ def visualize_graphviz(  # noqa: PLR0912
         **graphviz_kwargs,
     )
     hints = _all_type_annotations(graph)
+    print("Hints in viz", hints)
     nodes = _Nodes.from_graph(graph)
     labels = _Labels.from_graph(graph)
 
