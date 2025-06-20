@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import functools
-from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Literal
 
 from pipefunc import PipeFunc, Pipeline
@@ -326,12 +325,16 @@ class VariantPipeline:
         return new_functions
 
     def _check_remaining_variants(self, functions: list[PipeFunc]) -> bool:
-        """Check if any variants remain after selection."""
-        left_over = defaultdict(set)
-        for function in functions:
-            for group, variant in function.variant.items():
-                left_over[group].add(variant)
-        return any(len(variants) > 1 for variants in left_over.values())
+        return len(self._remaining_variant_groups(functions)) > 0
+
+    def _remaining_variant_groups(self, functions: list[PipeFunc]) -> set[str]:
+        """Get the unresolved variant groups."""
+        return {
+            group
+            for function in functions
+            for group, variant in function.variant.items()
+            if len(variant) > 1 and group is not None
+        }
 
     def copy(self, **kwargs: Any) -> VariantPipeline:
         """Return a copy of the VariantPipeline.
@@ -515,10 +518,14 @@ class VariantPipeline:
 
     def __getattr__(self, name: str) -> None:
         if name in Pipeline.__dict__:
+            remaining_variant_groups = self._remaining_variant_groups(self.functions)
+            remaining_variant_groups_str = ", ".join(remaining_variant_groups)
+
             msg = (
                 "This is a `VariantPipeline`, not a `Pipeline`."
-                " Use `pipeline.with_variant(...)` to select a variant first."
-                f" Then call `variant_pipeline.{name}` again."
+                f" The variant groups {remaining_variant_groups_str} are not resolved yet."
+                " Use `VariantPipeline.with_variant(...)` to instanciate a Pipeline first."
+                f" Then access `Pipeline.{name}` again."
             )
             raise AttributeError(msg)
         default_msg = f"'VariantPipeline' object has no attribute '{name}'"
