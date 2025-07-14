@@ -319,7 +319,9 @@ class VariantPipeline:
             if not len(function.variant.keys() & unresolvable_variant_groups)
         ]
 
-        pipeline = self.copy(functions=new_functions, **kwargs).with_variant()
+        pipeline = self.copy(functions=new_functions, **kwargs).with_variant(
+            self.default_variant or {},
+        )
         assert isinstance(pipeline, Pipeline)
 
         return pipeline
