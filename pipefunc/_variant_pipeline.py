@@ -290,6 +290,37 @@ class VariantPipeline:
             default_resources=kwargs.get("default_resources", self.default_resources),
         )
 
+    def drop_remaining_variants(self, **kwargs: Any) -> Pipeline:
+        """Drop all remaining variants and return a regular Pipeline.
+
+        This method is useful when you want to ensure that no variants are left in the
+        pipeline, effectively converting it into a regular `Pipeline`.
+
+        Returns
+        -------
+            A new `Pipeline` instance generated from the current `VariantPipeline`'s functions that are not part of any variant.
+
+        """
+        # The variant groups that would need further resolution for
+        # VariantPipeline.with_variant to return a Pipeline instance.
+        unresolvable_variant_groups = {
+            # Looks weird but is prefered by ruff.
+            group
+            for group, variants in self.variants_mapping().items()
+            if len(variants) == 1
+        }
+
+        new_functions = [
+            function
+            for function in self.functions
+            if not len(function.variant.keys() & unresolvable_variant_groups)
+        ]
+
+        pipeline = self.copy(functions=new_functions, **kwargs).with_variant()
+        assert isinstance(pipeline, Pipeline)
+
+        return pipeline
+
     def _resolve_single_variant(self, select: str) -> dict[str | None, str]:
         """Resolve a single variant string to a dictionary."""
         inv = self._variants_mapping_inverse()
