@@ -307,6 +307,12 @@ class VariantPipeline:
             group for group, variants in self.variants_mapping().items() if len(variants) > 1
         }
 
+        # Some variant groups can be resolved if they are specified in the default_variant.
+        if isinstance(self.default_variant, str):
+            unresolvable_variant_groups -= {None}
+        elif isinstance(self.default_variant, dict):
+            unresolvable_variant_groups -= self.default_variant.keys()
+
         new_functions = [
             function
             for function in self.functions
