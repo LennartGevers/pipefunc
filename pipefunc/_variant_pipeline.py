@@ -304,7 +304,7 @@ class VariantPipeline:
         # The variant groups that would need further resolution for
         # VariantPipeline.with_variant to return a Pipeline instance.
         unresolvable_variant_groups = {
-            group for group, variants in self.variants_mapping().items() if len(variants) == 1
+            group for group, variants in self.variants_mapping().items() if len(variants) > 1
         }
 
         new_functions = [
