@@ -320,7 +320,7 @@ class VariantPipeline:
         ]
 
         pipeline = self.copy(functions=new_functions, **kwargs).with_variant(
-            self.default_variant or {},
+            None if self.default_variant else {},
         )
         assert isinstance(pipeline, Pipeline)
 
