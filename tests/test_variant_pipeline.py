@@ -760,3 +760,72 @@ def test_variant_group_exception() -> None:
 
     with pytest.raises(ValueError, match=msg):
         PipeFunc(f2, output_name="c", variant="add", variant_group="group1")
+
+
+def test_drop_remaining_variants() -> None:
+    @pipefunc(output_name="c", variant={"method": "add", "version": "v1"})
+    def f1(a, b):
+        return a + b
+
+    @pipefunc(output_name="c", variant={"method": "sub", "version": "v1"})
+    def f2(a, b):
+        return a - b
+
+    @pipefunc(output_name="c", variant={"method": "add", "version": "v2"})
+    def f3(a, b):
+        return a + b + 1
+
+    @pipefunc(output_name="c", variant={"method": "sub", "version": "v2"})
+    def f4(a, b):
+        return a - b - 1
+
+    @pipefunc(output_name="d", variant={"post_process": "int"})
+    def f5(c):
+        return int(c)
+
+    @pipefunc(output_name="d", variant={"post_process": "float"})
+    def f6(c):
+        return int(c)
+
+    variant_pipeline = VariantPipeline([f1, f2, f3, f4, f5, f6]).with_variant(
+        {"method": "add", "version": "v1"},
+    )
+
+    assert isinstance(variant_pipeline, VariantPipeline)
+
+    pipeline = variant_pipeline.drop_remaining_variants()
+
+    assert isinstance(pipeline, Pipeline)
+    assert {"c"} == pipeline.all_output_names
+
+    variant_pipeline = VariantPipeline(
+        [f1, f2, f3, f4, f5, f6],
+        default_variant={"method": "add", "version": "v1"},
+    )
+    assert isinstance(variant_pipeline, VariantPipeline)
+
+    pipeline = variant_pipeline.drop_remaining_variants()
+
+    assert isinstance(pipeline, Pipeline)
+
+    assert {"c"} == pipeline.all_output_names
+
+    @pipefunc(output_name="c", variant="add")
+    def f1_add(a, b):
+        return a + b
+
+    @pipefunc(output_name="c", variant="sub")
+    def f2_sub(a, b):
+        return a - b
+
+    variant_pipeline = VariantPipeline(
+        [f1_add, f2_sub, f5, f6],
+        default_variant="add",
+    )
+    assert isinstance(variant_pipeline, VariantPipeline)
+
+    pipeline = variant_pipeline.drop_remaining_variants()
+
+    assert isinstance(pipeline, Pipeline)
+
+    assert {"c"} == pipeline.all_output_names
