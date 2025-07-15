@@ -293,7 +293,8 @@ class VariantPipeline:
     def drop_remaining_variants(self, **kwargs: Any) -> Pipeline:
         """Create a Pipeline from the current VariantPipeline, dropping all unresolved variants.
 
-        Returns a Pipeline instance which only includes funcs without variants or with unique variant groups.
+        Returns a Pipeline instance which only includes funcs without variants or with variant groups
+        that are unique within the VariantPipeline instance.
 
         Returns
         -------
@@ -318,8 +319,9 @@ class VariantPipeline:
             if not len(function.variant.keys() & unresolvable_variant_groups)
         ]
 
-        pipeline = self.copy(functions=new_functions, **kwargs).with_variant(
+        pipeline = self.copy(functions=new_functions).with_variant(
             None if self.default_variant else {},
+            **kwargs,
         )
         assert isinstance(pipeline, Pipeline)
 
