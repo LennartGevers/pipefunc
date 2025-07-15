@@ -291,10 +291,9 @@ class VariantPipeline:
         )
 
     def drop_remaining_variants(self, **kwargs: Any) -> Pipeline:
-        """Drop all remaining variants and return a regular Pipeline.
+        """Create a Pipeline from the current VariantPipeline, dropping all unresolved variants.
 
-        This method is useful when you want to ensure that no variants are left in the
-        pipeline, effectively converting it into a regular `Pipeline`.
+        Returns a Pipeline instance which only includes funcs without variants or with unique variant groups.
 
         Returns
         -------
