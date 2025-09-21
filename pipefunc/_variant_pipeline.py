@@ -1,18 +1,28 @@
 from __future__ import annotations
 
 import functools
+import itertools
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Literal
 
+import networkx as nx
+
 from pipefunc import PipeFunc, Pipeline
-from pipefunc._utils import assert_complete_kwargs, is_installed, is_running_in_ipynb, requires
+from pipefunc._pipeline._base import _find_nodes_between
+from pipefunc._utils import (
+    assert_complete_kwargs,
+    at_least_tuple,
+    is_installed,
+    is_running_in_ipynb,
+    requires,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     import ipywidgets
 
-    from pipefunc._pipefunc import PipeFunc
+    from pipefunc._pipefunc import OUTPUT_TYPE, PipeFunc
 
 
 class VariantPipeline:
@@ -361,6 +371,65 @@ class VariantPipeline:
         assert_complete_kwargs(original_kwargs, VariantPipeline.__init__, skip={"self"})
         original_kwargs.update(kwargs)
         return VariantPipeline(**original_kwargs)  # type: ignore[arg-type]
+
+    @functools.cached_property
+    def multi_graph(self) -> nx.MultiDiGraph[str]:
+        """Create a directed graph representing the VariantPipeline.
+
+        Returns
+        -------
+            A directed graph with nodes representing function inputs and outputs and edges
+            representing the connection of these through functions mappng these inputs to outputs.
+
+            The graph contains multiple paths between two nodes when unresolved variants exist.
+
+        """
+        g = nx.MultiDiGraph()
+        for f in self.functions:
+            for input_name, output_name in itertools.product(
+                f.parameters,
+                at_least_tuple(f.output_name),
+            ):
+                g.add_edge(input_name, output_name, func=f)
+
+        return g
+
+    def subpipeline(
+        self,
+        inputs: set[str] | None = None,
+        output_names: set[OUTPUT_TYPE] | None = None,
+    ) -> VariantPipeline:
+        if inputs is None and output_names is None:
+            msg = "At least one of `inputs` or `output_names` should be provided."
+            raise ValueError(msg)
+
+        outputs = (
+            None
+            if output_names is None
+            else {name for output_name in output_names for name in at_least_tuple(output_name)}
+        )
+
+        root_args = {
+            node for node in self.multi_graph if len(list(self.multi_graph.predecessors(node))) == 0
+        }
+
+        root_args = root_args if inputs is None else inputs
+
+        final_outputs = {
+            node for node in self.multi_graph if len(list(self.multi_graph.successors(node))) == 0
+        }
+
+        final_outputs = final_outputs if outputs is None else outputs
+
+        between = _find_nodes_between(self.multi_graph, root_args, final_outputs)
+
+        updating_graph = self.multi_graph.copy()
+
+        for node in self.multi_graph:
+            if node not in between:
+                updating_graph.remove_node(node)
+
+        return self.copy(functions=[func for *_, func in updating_graph.edges(data="func")])
 
     @classmethod
     def from_pipelines(
