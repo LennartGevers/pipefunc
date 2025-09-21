@@ -290,6 +290,41 @@ class VariantPipeline:
             default_resources=kwargs.get("default_resources", self.default_resources),
         )
 
+    def subpipeline(self, )
+
+    def drop_variants(self, *variants: str | dict[str | None, str]) -> Pipeline | VariantPipeline:
+        current_funcs = self.functions
+
+        new_funcs = []
+
+        for func in current_funcs:
+            if not func.variant:
+                # Function has no variants, keep it as is
+                new_funcs.append(func)
+                continue
+
+            for variant in variants:
+                if isinstance(variant, str):
+                    if func.variant.get(None) == variant:
+                        continue
+
+                elif isinstance(variant, dict):
+                    if not variant.keys() & func.variant.keys():
+                        continue
+                    if any(func.variant.get(group) == v for group, v in variant.items()):
+                        continue
+                    new_funcs.append(func)
+                if not isinstance(variant, dict):
+                    msg = f"Invalid variant type: `{type(variant)}`. Expected `str` or `dict`."
+                    raise TypeError(msg)
+
+        if isinstance(self.default_variant, str):
+            new_default_variant = (
+                self.default_variant if self.default_variant not in variants else None
+            )
+
+        return self
+
     def drop_remaining_variants(self, **kwargs: Any) -> Pipeline:
         """Create a Pipeline from the current VariantPipeline, dropping all unresolved variants.
 
